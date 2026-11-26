@@ -4,6 +4,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.telecom.PhoneAccountHandle;
+import android.telephony.SubscriptionManager;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -18,11 +19,13 @@ final class Prefs {
     private static final String K_ENABLED = "enabled";
     private static final String K_COMPONENT = "account_component";
     private static final String K_ID = "account_id";
+    private static final String K_SUB_ID = "sub_id";
     private static final String K_LABEL = "account_label";
     private static final String K_MODE = "mode";
     private static final String K_KEEP_LOG = "keep_in_call_log";
     private static final String K_COUNT = "blocked_count";
     private static final String K_RECENT = "recent";
+    private static final String K_LAST_CHECK = "last_check";
     private static final int MAX_RECENT = 15;
 
     private final SharedPreferences sp;
@@ -32,6 +35,10 @@ final class Prefs {
         Context dc = c.createDeviceProtectedStorageContext();
         dc.moveSharedPreferencesFrom(c, FILE);
         sp = dc.getSharedPreferences(FILE, Context.MODE_PRIVATE);
+    }
+
+    static String now() {
+        return new SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(new Date());
     }
 
     boolean isEnabled() { return sp.getBoolean(K_ENABLED, false); }
@@ -45,33 +52,43 @@ final class Prefs {
 
     String blockedLabel() { return sp.getString(K_LABEL, null); }
 
-    void setBlockedAccount(PhoneAccountHandle h, String label) {
+    void setBlockedAccount(PhoneAccountHandle h, String label, int subId) {
         sp.edit()
                 .putString(K_COMPONENT, h.getComponentName().flattenToString())
                 .putString(K_ID, h.getId())
                 .putString(K_LABEL, label)
+                .putInt(K_SUB_ID, subId)
                 .apply();
     }
 
-    /** True if this call arrived on the SIM the user chose to block. */
-    boolean matches(PhoneAccountHandle h) {
-        if (h == null) return false;
-        String comp = sp.getString(K_COMPONENT, null);
-        String id = sp.getString(K_ID, null);
-        if (comp == null || id == null) return false;
-        ComponentName cn = ComponentName.unflattenFromString(comp);
-        return h.getComponentName().equals(cn) && id.equals(h.getId());
+    /** Subscription id of the chosen SIM, or INVALID_SUBSCRIPTION_ID if not known. */
+    int blockedSubId() {
+        return sp.getInt(K_SUB_ID, SubscriptionManager.INVALID_SUBSCRIPTION_ID);
     }
 
-    boolean isSelected(PhoneAccountHandle h) { return matches(h); }
+    /** The chosen SIM's phone account, or null if none chosen. */
+    PhoneAccountHandle blockedHandle() {
+        String comp = sp.getString(K_COMPONENT, null);
+        String id = sp.getString(K_ID, null);
+        if (comp == null || id == null) return null;
+        ComponentName cn = ComponentName.unflattenFromString(comp);
+        return cn == null ? null : new PhoneAccountHandle(cn, id);
+    }
+
+    /** True if this phone account is the SIM the user chose to block. */
+    boolean matches(PhoneAccountHandle h) {
+        PhoneAccountHandle mine = blockedHandle();
+        return h != null && mine != null
+                && h.getComponentName().equals(mine.getComponentName())
+                && h.getId().equals(mine.getId());
+    }
 
     int blockedCount() { return sp.getInt(K_COUNT, 0); }
 
     String recent() { return sp.getString(K_RECENT, ""); }
 
     synchronized void logBlocked(String number) {
-        String when = new SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(new Date());
-        String line = when + "  " + (number == null || number.isEmpty() ? "(hidden number)" : number);
+        String line = now() + "  " + (number == null || number.isEmpty() ? "(hidden number)" : number);
         String[] old = recent().isEmpty() ? new String[0] : recent().split("\n");
         StringBuilder sb = new StringBuilder(line);
         for (int i = 0; i < old.length && i < MAX_RECENT - 1; i++) sb.append('\n').append(old[i]);
@@ -79,4 +96,8 @@ final class Prefs {
     }
 
     void clearLog() { sp.edit().putInt(K_COUNT, 0).putString(K_RECENT, "").apply(); }
+
+    /** One-line record of the most recent call the app was asked about, for troubleshooting. */
+    String lastCheck() { return sp.getString(K_LAST_CHECK, null); }
+    void setLastCheck(String s) { sp.edit().putString(K_LAST_CHECK, s).apply(); }
 }

@@ -6,7 +6,6 @@ import android.app.role.RoleManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
-import android.os.Build;
 import android.os.Bundle;
 import android.telecom.PhoneAccount;
 import android.telecom.PhoneAccountHandle;
@@ -132,6 +131,12 @@ public class MainActivity extends Activity {
             t.setTypeface(Typeface.MONOSPACE);
             button("Clear list", v -> { prefs.clearLog(); render(); });
         }
+
+        heading("Last call checked");
+        String last = prefs.lastCheck();
+        body(last != null ? last
+                : "None yet. If a call rings through and this stays empty, Android didn't pass "
+                + "the call to this app (it never does for numbers in your contacts).");
     }
 
     private void simPicker() {
@@ -151,8 +156,11 @@ public class MainActivity extends Activity {
             String label = describe(tm, h);
             RadioButton rb = radio(label);
             g.addView(rb);
-            if (prefs.isSelected(h)) rb.setChecked(true);
-            rb.setOnClickListener(v -> { prefs.setBlockedAccount(h, label); render(); });
+            if (prefs.matches(h)) rb.setChecked(true);
+            rb.setOnClickListener(v -> {
+                prefs.setBlockedAccount(h, label, subIdFor(h));
+                render();
+            });
         }
         root.addView(g);
     }
@@ -165,22 +173,26 @@ public class MainActivity extends Activity {
             if (pa != null && pa.getLabel() != null) label = pa.getLabel().toString();
         } catch (Exception ignored) { }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                TelephonyManager tel = getSystemService(TelephonyManager.class);
-                int subId = tel.getSubscriptionId(h);
-                SubscriptionManager sm = getSystemService(SubscriptionManager.class);
-                SubscriptionInfo info = sm.getActiveSubscriptionInfo(subId);
-                if (info != null) {
-                    String name = String.valueOf(info.getDisplayName());
-                    String carrier = String.valueOf(info.getCarrierName());
-                    String slot = info.isEmbedded() ? "eSIM" : "SIM " + (info.getSimSlotIndex() + 1);
-                    String extra = carrier.equals(name) ? slot : carrier + ", " + slot;
-                    return name + " (" + extra + ")";
-                }
-            } catch (Exception ignored) { }
-        }
+        try {
+            SubscriptionManager sm = getSystemService(SubscriptionManager.class);
+            SubscriptionInfo info = sm.getActiveSubscriptionInfo(subIdFor(h));
+            if (info != null) {
+                String name = String.valueOf(info.getDisplayName());
+                String carrier = String.valueOf(info.getCarrierName());
+                String slot = info.isEmbedded() ? "eSIM" : "SIM " + (info.getSimSlotIndex() + 1);
+                String extra = carrier.equals(name) ? slot : carrier + ", " + slot;
+                return name + " (" + extra + ")";
+            }
+        } catch (Exception ignored) { }
         return label != null ? label : "SIM " + h.getId();
+    }
+
+    private int subIdFor(PhoneAccountHandle h) {
+        try {
+            return getSystemService(TelephonyManager.class).getSubscriptionId(h);
+        } catch (Exception e) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
     }
 
     @Override

@@ -8,11 +8,11 @@ android {
 
     defaultConfig {
         applicationId 'uk.tjb.simcallblocker'
-        // Call-screening role (RoleManager.ROLE_CALL_SCREENING) needs Android 10+.
-        minSdk 29
+        // Android 12+: needed for per-SIM call state (getCallStateForSubscription).
+        minSdk 31
         targetSdk 35
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '1.1'
     }
 
     buildTypes {
