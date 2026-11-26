@@ -2,6 +2,10 @@ plugins {
     id 'com.android.application'
 }
 
+// Release signing comes from environment variables (set by CI from repository secrets).
+// Without them, e.g. a local build or a fork with no secrets, the debug key is used.
+def releaseStoreFile = System.getenv('SIGNING_STORE_FILE')
+
 android {
     namespace 'uk.tjb.simcallblocker'
     compileSdk 35
@@ -15,11 +19,21 @@ android {
         versionName '1.1'
     }
 
+    signingConfigs {
+        release {
+            if (releaseStoreFile) {
+                storeFile file(releaseStoreFile)
+                storePassword System.getenv('SIGNING_STORE_PASSWORD')
+                keyAlias System.getenv('SIGNING_KEY_ALIAS')
+                keyPassword System.getenv('SIGNING_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            // Signed with the debug key so the release APK can be sideloaded as-is.
-            signingConfig signingConfigs.debug
+            signingConfig releaseStoreFile ? signingConfigs.release : signingConfigs.debug
         }
     }
 
